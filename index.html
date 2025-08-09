@@ -1,10 +1,128 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <title>JobMail</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Job Search App</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#141b2b; --accent:#55c3ff; --muted:#9fb0cc; --text:#eaf2ff; --chip:#1e2640;
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Segoe UI,Roboto}
+  header{position:sticky;top:0;background:linear-gradient(180deg,#0f1420,#0f1420cc);backdrop-filter:saturate(1.2) blur(6px);border-bottom:1px solid #19223a}
+  .wrap{max-width:1100px;margin:0 auto;padding:14px 18px}
+  h1{margin:0;font-size:18px}
+  .bar{display:grid;grid-template-columns:1fr 1fr 110px 140px auto; gap:10px;margin-top:12px}
+  input,select,button{border:1px solid #1c2742;background:#0f1420;color:var(--text);padding:10px 12px;border-radius:10px}
+  input::placeholder{color:#6f83a3}
+  button{background:var(--accent);color:#001020;border:none;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.6;cursor:wait}
+  main{padding:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid #1b2440;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
+  .title{font-weight:700}
+  .meta{color:var(--muted);font-size:13px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{background:var(--chip);border:1px solid #223056;color:#cde6ff;font-size:12px;padding:4px 8px;border-radius:999px}
+  .row{display:flex;align-items:center;gap:10px;justify-content:space-between}
+  .apply{margin-top:auto}
+  .apply a{display:inline-block;background:#1ee0a1;color:#001b12;text-decoration:none;padding:8px 12px;border-radius:10px;font-weight:700}
+  .status{color:var(--muted);font-size:13px;margin-top:4px}
+  .err{color:#ff9ba0}
+</style>
 </head>
 <body>
-  <h1>Job Search App</h1>
-  <p>Backend is running with Node.js 20 on Vercel.</p>
+<header>
+  <div class="wrap">
+    <h1>Job Search App</h1>
+    <div class="bar">
+      <input id="roles" placeholder="Roles (comma separated)" value="Data Engineer, AI Engineer, Azure Data Engineer, ML Engineer">
+      <input id="where" placeholder="Where" value="Canada">
+      <select id="minutes">
+        <option value="15">Last 15m</option>
+        <option value="30" selected>Last 30m</option>
+        <option value="60">Last 1h</option>
+        <option value="120">Last 2h</option>
+        <option value="1440">Last 24h</option>
+      </select>
+      <select id="auto">
+        <option value="0">No auto-refresh</option>
+        <option value="60">Refresh every 1m</option>
+        <option value="180">Refresh every 3m</option>
+        <option value="300">Refresh every 5m</option>
+      </select>
+      <button id="go">Fetch</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="grid" class="grid"></div>
+</main>
+
+<script>
+const $ = (s)=>document.querySelector(s);
+const grid = $("#grid"), statusEl = $("#status"), btn = $("#go");
+let timer = null;
+
+function qFromUI(){
+  const roles = $("#roles").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const where = $("#where").value.trim() || "Canada";
+  const minutes = +$("#minutes").value || 30;
+  const q = roles.length ? roles.join(" OR ") : "Data Engineer";
+  return { q, where, minutes };
+}
+
+async function fetchJobs(){
+  try{
+    btn.disabled = true;
+    statusEl.textContent = "Loading…";
+    const { q, where, minutes } = qFromUI();
+    const url = new URL("/api/jobs", location.origin);
+    url.searchParams.set("q", q);
+    url.searchParams.set("where", where);
+    url.searchParams.set("minutes", minutes);
+    const r = await fetch(url);
+    const data = await r.json();
+    if(!r.ok) throw new Error(data?.error || "Request failed");
+    render(data);
+    statusEl.textContent = `Showing ${data.count} results • ${where} • last ${minutes} min`;
+  }catch(e){
+    statusEl.innerHTML = `<span class="err">Error:</span> ${e.message}`;
+    grid.innerHTML = "";
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function render({results=[]}={}){
+  grid.innerHTML = results.map(j=>`
+    <div class="card">
+      <div class="row">
+        <div class="title">${escapeHTML(j.title||"-")}</div>
+      </div>
+      <div class="meta">${escapeHTML(j.company||"")} — ${escapeHTML(j.location||"")}</div>
+      <div class="chips">
+        <span class="chip">${new Date(j.posted_utc).toLocaleString()}</span>
+        <span class="chip">${escapeHTML(j.source||"")}</span>
+      </div>
+      <div class="apply"><a href="${j.link||'#'}" target="_blank" rel="noopener">Apply →</a></div>
+    </div>
+  `).join("");
+}
+
+function escapeHTML(s){return (s??"").toString().replace(/[&<>"']/g,m=>({&:"&amp;",<:"&lt;",>:"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+
+$("#auto").addEventListener("change", ()=>{
+  if(timer){ clearInterval(timer); timer=null; }
+  const sec = +$("#auto").value;
+  if(sec>0){ timer = setInterval(fetchJobs, sec*1000); }
+});
+btn.addEventListener("click", fetchJobs);
+
+// initial load
+fetchJobs();
+</script>
 </body>
 </html>
